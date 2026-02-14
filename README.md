@@ -226,7 +226,7 @@ const REQUIRE_SUBMIT_BEFORE_NEXT = true; // Force answer submission before next 
 
 ## 📄 License
 
-MIT - See LICENSE file for details
+This project is licensed under the MIT License. See [`LICENSE`](./LICENSE).
 
 ---
 
@@ -263,6 +263,7 @@ A: The key is in environment variables (.env.local), not exposed. The frontend c
 ---
 
 **Made with ❤️ for system design enthusiasts**
+
 
 
 
