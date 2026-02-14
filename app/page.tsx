@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Spinner } from "@/app/components/Spinner";
-import { SpinnerDark } from "@/app/components/SpinnerDark";
+import { Skeleton } from "@/app/components/Skeleton";
 
 type Kind = "legit" | "incomplete" | "flawed" | "buzzword_bs";
 
@@ -46,26 +46,16 @@ const KIND_LABELS: Record<Kind, string> = {
   buzzword_bs: "Buzzword BS 💀",
 };
 
-const LS_SCORE_KEY = "archduel:score"; // optional, for persistence later
 const RETRY_STATUSES = new Set([429, 502, 503, 504]);
 const LS_DAILY_KEY = (dateKey: string) => `archduel:daily:${dateKey}`;
+const LS_THEME_KEY = "archduel:theme"; // "light" | "dark" | "system"
+const LS_SCORE_KEY = "archduel:score:v1";
 
-async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3) {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const res = await fetch(url, init);
-
-    if (res.ok) return res;
-
-    if (RETRY_STATUSES.has(res.status) && attempt < maxAttempts) {
-      await new Promise((r) => setTimeout(r, 600 * attempt));
-      continue;
-    }
-
-    return res; // fail out
-  }
-  // should never reach here
-  return fetch(url, init);
-}
+// Configuration constants
+const REQUIRE_SUBMIT_BEFORE_NEXT = true;
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 600;
+const MIN_SHIMMER_MS = 100; // Reduced for faster perceived loading
 
 function todayKey() {
   const d = new Date();
@@ -73,6 +63,58 @@ function todayKey() {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function minDelay(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function getSystemPrefersDark() {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function safeParseInt(v: string | null, fallback = 0) {
+  if (!v) return fallback;
+  const n = Number.parseInt(v, 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * Ensures a minimum duration for async operations (useful for shimmer effects)
+ */
+async function ensureMinLoadTime(startTime: number, minMs: number) {
+  const elapsed = Date.now() - startTime;
+  if (elapsed < minMs) {
+    await minDelay(minMs - elapsed);
+  }
+}
+
+/**
+ * Fetches with automatic retry logic for transient failures
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  onRetry?: (attempt: number) => void
+): Promise<Response> {
+  for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+    onRetry?.(attempt);
+
+    const res = await fetch(url, options);
+    if (res.ok) return res;
+
+    // Retry on transient errors if not the last attempt
+    if (RETRY_STATUSES.has(res.status) && attempt < MAX_RETRY_ATTEMPTS) {
+      await minDelay(RETRY_DELAY_MS * attempt);
+      continue;
+    }
+
+    return res;
+  }
+
+  // Should never reach here, but return last attempt
+  return fetch(url, options);
 }
 
 export default function Home() {
@@ -89,65 +131,97 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [retryInfo, setRetryInfo] = useState<string | null>(null);
 
+  const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
+
+  // ------------ Score persistence ------------
+  useEffect(() => {
+    const saved = localStorage.getItem(LS_SCORE_KEY);
+    setScore(safeParseInt(saved, 0));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(LS_SCORE_KEY, String(score));
+  }, [score]);
+
+  function resetScore() {
+    setScore(0);
+    localStorage.setItem(LS_SCORE_KEY, "0");
+  }
+
+  function resetRound() {
+    setReveal(false);
+    setChoice(null);
+    setBucket(null);
+    setEvalResp(null);
+    setErrorMsg(null);
+    setRetryInfo(null);
+  }
+
+  // ------------ Theme persistence ------------
+  useEffect(() => {
+    const saved = (localStorage.getItem(LS_THEME_KEY) as any) || "system";
+    const t: "light" | "dark" | "system" =
+      saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
+    setTheme(t);
+  }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const effectiveDark = theme === "dark" || (theme === "system" && getSystemPrefersDark());
+    root.classList.toggle("dark", effectiveDark);
+    localStorage.setItem(LS_THEME_KEY, theme);
+  }, [theme]);
+
+  // If user changes selection after seeing results, clear old result.
   useEffect(() => {
     if (!round) return;
     if (reveal) {
       setReveal(false);
       setEvalResp(null);
     }
-    // we intentionally don't include evalResp in deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [choice, bucket]);
 
-  async function start() {
-    setIsGenerating(true);
-    setReveal(false);
-    setChoice(null);
-    setBucket(null);
-    setEvalResp(null);
-    setErrorMsg(null);
-    setRetryInfo(null);
+  const canGoNext = useMemo(() => {
+    if (!REQUIRE_SUBMIT_BEFORE_NEXT) return true;
+    if (!round) return true;
+    return reveal === true;
+  }, [round, reveal]);
 
-    const maxAttempts = 3;
+  async function start() {
+    if (!canGoNext) return;
+
+    setIsGenerating(true);
+    resetRound();
 
     try {
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        setRetryInfo(attempt > 1 ? `Retrying... (${attempt}/${maxAttempts})` : null);
+      const t0 = Date.now();
+      const res = await fetchWithRetry("/api/generate", { method: "POST" }, (attempt) => {
+        setRetryInfo(attempt > 1 ? `Retrying... (${attempt}/${MAX_RETRY_ATTEMPTS})` : null);
+      });
 
-        const res = await fetch("/api/generate", { method: "POST" });
-
-        if (res.ok) {
-          const data = (await res.json()) as Round;
-          setRound(data);
-          setRetryInfo(null);
-          return;
-        }
-
-        if (res.status === 503 && attempt < maxAttempts) {
-          await new Promise((r) => setTimeout(r, 600 * attempt)); // 600ms, 1200ms...
-          continue;
-        }
-
+      if (!res.ok) {
         const txt = await res.text();
         setErrorMsg(`Generate failed (${res.status}). ${txt}`);
-        setRetryInfo(null);
         return;
       }
+
+      const data = (await res.json()) as Round;
+      await ensureMinLoadTime(t0, MIN_SHIMMER_MS);
+      setRound(data);
+      setRetryInfo(null);
+    } catch (e: any) {
+      setErrorMsg(String(e?.message ?? e));
     } finally {
       setIsGenerating(false);
     }
   }
 
   async function startDaily() {
-    setIsGenerating(true);
-    setReveal(false);
-    setChoice(null);
-    setBucket(null);
-    setEvalResp(null);
-    setErrorMsg(null);
-    setRetryInfo(null);
+    if (!canGoNext) return;
 
-    const maxAttempts = 3;
+    setIsGenerating(true);
+    resetRound();
 
     try {
       const key = LS_DAILY_KEY(todayKey());
@@ -157,29 +231,24 @@ export default function Home() {
         return;
       }
 
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        setRetryInfo(attempt > 1 ? `Retrying daily... (${attempt}/${maxAttempts})` : null);
+      const t0 = Date.now();
+      const res = await fetchWithRetry("/api/generate?daily=true", { method: "POST" }, (attempt) => {
+        setRetryInfo(attempt > 1 ? `Retrying daily... (${attempt}/${MAX_RETRY_ATTEMPTS})` : null);
+      });
 
-        const res = await fetch("/api/generate", { method: "POST" });
-
-        if (res.ok) {
-          const data = (await res.json()) as Round;
-          setRound(data);
-          localStorage.setItem(key, JSON.stringify(data));
-          setRetryInfo(null);
-          return;
-        }
-
-        if (RETRY_STATUSES.has(res.status) && attempt < maxAttempts) {
-          await new Promise((r) => setTimeout(r, 600 * attempt));
-          continue;
-        }
-
+      if (!res.ok) {
         const txt = await res.text();
         setErrorMsg(`Daily challenge failed (${res.status}). ${txt}`);
-        setRetryInfo(null);
         return;
       }
+
+      const data = (await res.json()) as Round;
+      await ensureMinLoadTime(t0, MIN_SHIMMER_MS);
+      setRound(data);
+      localStorage.setItem(key, JSON.stringify(data));
+      setRetryInfo(null);
+    } catch (e: any) {
+      setErrorMsg(String(e?.message ?? e));
     } finally {
       setIsGenerating(false);
     }
@@ -193,15 +262,11 @@ export default function Home() {
     setReveal(false);
     setErrorMsg(null);
 
-    const maxAttempts = 3;
-
     try {
-      let res: Response | null = null;
-
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        setRetryInfo(attempt > 1 ? `Retrying evaluation... (${attempt}/${maxAttempts})` : null);
-
-        res = await fetch("/api/evaluate", {
+      const t0 = Date.now();
+      const res = await fetchWithRetry(
+        "/api/evaluate",
+        {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -212,49 +277,92 @@ export default function Home() {
             player_kind: choice,
             player_bucket: bucket,
           }),
-        });
-
-        if (res.ok) break;
-
-        if (RETRY_STATUSES.has(res.status) && attempt < maxAttempts) {
-          await new Promise((r) => setTimeout(r, 600 * attempt));
-          continue;
+        },
+        (attempt) => {
+          setRetryInfo(attempt > 1 ? `Retrying evaluation... (${attempt}/${MAX_RETRY_ATTEMPTS})` : null);
         }
+      );
 
+      if (!res.ok) {
         const txt = await res.text();
         throw new Error(`Evaluate failed: ${res.status} ${txt}`);
       }
 
-      setRetryInfo(null);
-
-      const data = (await res!.json()) as EvalResp;
+      await ensureMinLoadTime(t0, MIN_SHIMMER_MS);
+      const data = (await res.json()) as EvalResp;
       setEvalResp(data);
       setScore((s) => s + (data.score_delta ?? 0));
       setReveal(true);
-    } catch (e: any) {
       setRetryInfo(null);
+    } catch (e: any) {
       setErrorMsg(String(e?.message ?? e));
     } finally {
       setIsEvaluating(false);
     }
   }
 
+  const card = "bg-white border border-gray-200 shadow-sm dark:bg-gray-900 dark:border-gray-800";
+  const textMain = "text-gray-900 dark:text-gray-100";
+  const textSub = "text-gray-700 dark:text-gray-300";
+  const textMuted = "text-gray-600 dark:text-gray-400";
+
   return (
-    <main className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-6 py-10">
-        <h1 className="text-3xl font-bold tracking-tight">
-          Arch <span className="text-blue-600">Duel</span>
-        </h1>
+    <main className="min-h-screen bg-white dark:bg-black">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className={`select-none text-3xl font-extrabold tracking-tight ${textMain}`}>
+              Arch <span className="text-blue-600">Duel</span>
+            </h1>
+            <p className={`select-none mt-2 max-w-2xl ${textSub}`}>
+              AI generates a system design answer. You classify it and pick the missing / impacted bucket.
+            </p>
+          </div>
 
-        <p className="text-gray-500 mt-2">
-          AI generates a system design answer. You classify it and pick the main bucket.
-        </p>
+          {/* Right controls */}
+          <div className="shrink-0 flex flex-wrap items-center justify-between sm:justify-end gap-3">
+            {/* Theme segmented */}
+            <div className={`select-none inline-flex rounded-xl border ${card} overflow-hidden`}>
+              {(["system", "light", "dark"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTheme(t)}
+                  className={[
+                    "px-3 py-2 text-sm transition",
+                    theme === t
+                      ? "bg-blue-600 text-white"
+                      : "bg-transparent hover:bg-gray-50 dark:hover:bg-gray-800",
+                    theme === t ? "" : textSub,
+                  ].join(" ")}
+                >
+                  {t === "system" ? "System" : t === "light" ? "Light" : "Dark"}
+                </button>
+              ))}
+            </div>
 
-        <div className="flex items-center gap-3 mt-6 flex-wrap">
+            <div className={`select-none text-sm px-4 py-2 rounded-full ${card}`}>
+              <span className={textSub}>Score </span>
+              <span className={`font-semibold ${textMain}`}>{score}</span>
+            </div>
+
+            <button
+              onClick={resetScore}
+              className="select-none text-sm px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 transition dark:bg-gray-950 dark:border-gray-800 dark:text-gray-100 dark:hover:bg-gray-900"
+              title="Reset score"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-center">
           <button
             onClick={start}
-            disabled={isGenerating}
-            className="px-5 py-2.5 rounded-lg bg-blue-600 text-white cursor-pointer hover:bg-blue-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            disabled={isGenerating || !canGoNext}
+            className="select-none col-span-1 px-5 py-3 rounded-lg bg-blue-600 text-white cursor-pointer hover:bg-blue-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            title={!canGoNext ? "Submit this round first" : undefined}
           >
             {isGenerating ? <Spinner /> : null}
             {round ? "Next Round" : "Start"}
@@ -262,99 +370,148 @@ export default function Home() {
 
           <button
             onClick={startDaily}
-            disabled={isGenerating}
-            className="px-5 py-2.5 rounded-lg border border-gray-300 bg-white cursor-pointer hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isGenerating || !canGoNext}
+            className="select-none col-span-1 px-5 py-3 rounded-lg border border-gray-300 bg-white cursor-pointer hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center dark:bg-gray-950 dark:hover:bg-gray-900 dark:border-gray-800 dark:text-gray-100"
+            title={!canGoNext ? "Submit this round first" : undefined}
           >
             Daily Challenge
           </button>
-
-          <div className="ml-auto text-sm bg-white px-3 py-1.5 rounded-full border border-gray-200 shadow-sm">
-            Score <span className="font-semibold">{score}</span>
-          </div>
         </div>
 
+        {REQUIRE_SUBMIT_BEFORE_NEXT && round && !reveal && (
+          <p className={`select-none mt-3 text-sm ${textMuted}`}>
+            Tip: Submit your answer to unlock <b>Next Round</b>.
+          </p>
+        )}
+
         {errorMsg && (
-          <div className="mt-4 p-3 rounded border border-red-300 bg-red-50 text-sm">
+          <div className="mt-4 p-3 rounded border border-red-300 bg-red-50 text-sm dark:border-red-900 dark:bg-red-950 dark:text-red-200">
             {errorMsg}
           </div>
         )}
 
         {retryInfo && (
-          <div className="mt-3 p-3 rounded border border-blue-200 bg-blue-50 text-sm">
+          <div className="mt-3 p-3 rounded border border-blue-200 bg-blue-50 text-sm dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
             {retryInfo}
           </div>
         )}
 
-        {!round && (
-          <p className="mt-10 text-gray-700">
+        {!round && !isGenerating && (
+          <p className={`select-none mt-10 ${textSub}`}>
             Tap <b>Start</b> to play.
           </p>
         )}
 
-        {round && (
+        {/* LOADING STATE */}
+        {isGenerating && (
           <section className="mt-8">
-            <div className="text-xs text-gray-600">
+            <div className={`select-none text-sm ${textSub} h-4 w-20 rounded shimmer`} />
+            <div className={`mt-2 text-lg font-semibold ${textMain} h-6 w-40 rounded shimmer`} />
+            <div className={`mt-5 p-4 sm:p-6 rounded-xl ${card}`}>
+              <div className="space-y-3">
+                <Skeleton className="h-4 w-[90%]" />
+                <Skeleton className="h-4 w-[96%]" />
+                <Skeleton className="h-4 w-[88%]" />
+                <Skeleton className="h-4 w-[92%]" />
+                <Skeleton className="h-4 w-[78%]" />
+                <Skeleton className="h-4 w-[85%]" />
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* MAIN GAME AREA */}
+        {round && !isGenerating && (
+          <section className="mt-8">
+            {/* Meta */}
+            <div className={`select-none text-sm ${textSub}`}>
               Topic: <b>{round.topic}</b> • Difficulty: <b>{round.difficulty}</b>
             </div>
 
-            <h2 className="mt-2 text-lg font-semibold">{round.prompt}</h2>
+            {/* Prompt */}
+            <h2 className={`mt-2 text-lg sm:text-xl font-semibold ${textMain}`}>
+              {round.prompt}
+            </h2>
 
-            <div className="mt-5 p-6 rounded-xl bg-white shadow-sm border border-gray-200 whitespace-pre-wrap leading-relaxed text-gray-800">
-              {round.design_text}
+            {/* Design Text Card */}
+            <div className={`mt-5 p-4 sm:p-6 rounded-xl ${card}`}>
+              <div className={`whitespace-pre-wrap leading-relaxed ${textSub}`}>
+                {round.design_text}
+              </div>
             </div>
 
-            <hr className="my-8 border-gray-200" />
+            <hr className="my-8 border-gray-200 dark:border-gray-800" />
 
-            <h3 className="text-lg font-semibold mb-3">1) Classify</h3>
+            {/* Classify */}
+            <h3 className={`select-none text-lg font-semibold mb-3 ${textMain}`}>
+              1) Classify
+            </h3>
+
             <div className="grid grid-cols-2 gap-3">
-              {(Object.keys(KIND_LABELS) as Kind[]).map((k) => (
-                <button
-                  key={k}
-                  onClick={() => setChoice(k)}
-                  className={`
-                    p-4 rounded-xl border transition cursor-pointer text-left bg-white
-                    ${choice === k
-                      ? "border-blue-600 bg-blue-50"
-                      : "border-gray-200 hover:border-blue-400 hover:bg-blue-50 active:scale-[0.99]"}
-                  `}
-                >
-                  {KIND_LABELS[k]}
-                </button>
-              ))}
+              {(Object.keys(KIND_LABELS) as Kind[]).map((k) => {
+                const active = choice === k;
+                return (
+                  <button
+                    key={k}
+                    onClick={() => setChoice(k)}
+                    className={[
+                      "select-none p-4 rounded-xl border transition cursor-pointer text-left",
+                      active
+                        ? "border-blue-600 bg-blue-50 dark:bg-blue-950/40"
+                        : "border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 active:scale-[0.99] dark:bg-gray-950 dark:border-gray-800 dark:hover:bg-gray-900",
+                      textMain,
+                    ].join(" ")}
+                  >
+                    {KIND_LABELS[k]}
+                  </button>
+                );
+              })}
             </div>
 
-            <h3 className="text-lg font-semibold mt-7 mb-1">2) Pick missing / most impacted bucket</h3>
-            <p className="text-sm text-gray-500 mb-3">
+            {/* Bucket */}
+            <h3 className={`select-none text-lg font-semibold mt-7 mb-1 ${textMain}`}>
+              2) Pick missing / most impacted bucket
+            </h3>
+
+            <p className={`select-none text-sm mb-3 ${textMuted}`}>
               If the answer is <b>Legit</b>, pick <b>other</b>.
             </p>
+
             <div className="flex flex-wrap gap-2">
-              {BUCKETS.map((b) => (
-                <button
-                  key={b}
-                  onClick={() => setBucket(b)}
-                  className={`
-                    px-3 py-2 rounded-full border text-sm cursor-pointer transition bg-white
-                    ${bucket === b
-                      ? "border-blue-600 bg-blue-50"
-                      : "border-gray-200 hover:border-blue-400 hover:bg-blue-50 active:scale-[0.99]"}
-                  `}
-                >
-                  {b}
-                </button>
-              ))}
+              {BUCKETS.map((b) => {
+                const active = bucket === b;
+                return (
+                  <button
+                    key={b}
+                    onClick={() => setBucket(b)}
+                    className={[
+                      "select-none px-3 py-2 rounded-full border text-sm cursor-pointer transition",
+                      active
+                        ? "border-blue-600 bg-blue-50 dark:bg-blue-950/40"
+                        : "border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 active:scale-[0.99] dark:bg-gray-950 dark:border-gray-800 dark:hover:bg-gray-900",
+                      textMain,
+                    ].join(" ")}
+                  >
+                    {b}
+                  </button>
+                );
+              })}
             </div>
 
-            {round && (!choice || !bucket) && (
-              <p className="mt-4 text-sm text-gray-500">
+            {/* Submit helper */}
+            {(!choice || !bucket) && (
+              <p className={`select-none mt-4 text-sm ${textMuted}`}>
                 Select a <b>classification</b> and a <b>bucket</b> to unlock Submit.
               </p>
             )}
-            {round && choice && bucket && (
+
+            {/* Submit button */}
+            {choice && bucket && (
               <div className="mt-6">
                 <button
                   onClick={submit}
                   disabled={isEvaluating}
-                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition disabled:opacity-50 cursor-pointer hover:bg-blue-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 justify-center"
+                  className="select-none w-full sm:w-auto px-6 py-3 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 justify-center"
                 >
                   {isEvaluating ? <Spinner /> : null}
                   Submit Answer
@@ -362,27 +519,40 @@ export default function Home() {
               </div>
             )}
 
-            {reveal && evalResp && (
-              <div className="mt-7 p-5 rounded-xl bg-white border border-gray-200 shadow-sm">
-                <div className="font-semibold">
+            {/* Results */}
+            {isEvaluating && (
+              <div className={`mt-7 p-5 rounded-xl ${card}`}>
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-[55%]" />
+                  <Skeleton className="h-4 w-[90%]" />
+                  <Skeleton className="h-4 w-[85%]" />
+                  <Skeleton className="h-4 w-[70%]" />
+                </div>
+              </div>
+            )}
+
+            {reveal && evalResp && !isEvaluating && (
+              <div className={`mt-7 p-5 rounded-xl ${card}`}>
+                <div className={`select-none font-semibold ${textMain}`}>
                   {evalResp.correct ? "✅ Perfect!" : "⚠️ Not perfect"}{" "}
-                  <span className="text-sm font-normal text-gray-600">
-                    ({evalResp.score_delta >= 0 ? "+" : ""}{evalResp.score_delta})
+                  <span className={`text-sm font-normal ${textMuted}`}>
+                    ({evalResp.score_delta >= 0 ? "+" : ""}
+                    {evalResp.score_delta})
                   </span>
                 </div>
 
-                <p className="mt-3 text-sm">
+                <p className={`mt-3 text-sm ${textSub}`}>
                   <b>Verdict:</b> {evalResp.short_verdict}
                 </p>
 
-                <p className="mt-2 text-sm">
+                <p className={`mt-2 text-sm ${textSub}`}>
                   <b>Why:</b> {evalResp.why}
                 </p>
 
                 {evalResp.what_to_fix?.length ? (
                   <>
-                    <h4 className="mt-4 font-semibold">What to fix</h4>
-                    <ul className="list-disc pl-5 text-sm mt-2">
+                    <h4 className={`select-none mt-4 font-semibold ${textMain}`}>What to fix</h4>
+                    <ul className={`list-disc pl-5 text-sm mt-2 ${textSub}`}>
                       {evalResp.what_to_fix.map((x, i) => (
                         <li key={i}>{x}</li>
                       ))}
@@ -390,12 +560,12 @@ export default function Home() {
                   </>
                 ) : null}
 
-                <p className="mt-4 text-sm">
+                <p className={`mt-4 text-sm ${textSub}`}>
                   <b>Takeaway:</b> {evalResp.learning_takeaway}
                 </p>
 
-                <details className="mt-4 text-xs text-gray-600">
-                  <summary className="cursor-pointer">Debug: Ground truth</summary>
+                <details className={`mt-4 text-xs ${textMuted}`}>
+                  <summary className="cursor-pointer select-none">Debug: Ground truth</summary>
                   <div className="mt-2 space-y-1">
                     <div>Expected kind: {round.__answerKey.kind}</div>
                     <div>Expected bucket: {round.__answerKey.missing_bucket}</div>

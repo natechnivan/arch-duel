@@ -72,8 +72,12 @@ const RoundSchema = z.object({
   ]),
 });
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    // Check if this is a daily challenge request
+    const url = new URL(request.url);
+    const isDaily = url.searchParams.get("daily") === "true";
+
     const apiKey = mustGetKey();
     const genAI = new GoogleGenerativeAI(apiKey);
 
@@ -114,7 +118,7 @@ Return JSON only.
     const obj = sanitizeRound(extractJson(raw));
     const parsed = RoundSchema.parse(obj);
 
-    return NextResponse.json({
+    const response = {
       roundId: crypto.randomUUID(),
       prompt: parsed.prompt,
       topic: parsed.topic,
@@ -127,7 +131,17 @@ Return JSON only.
         hidden_issue: parsed.hidden_issue,
         missing_bucket: parsed.missing_bucket,
       },
-    });
+    };
+
+    // Add caching headers for daily challenges only
+    const headers: Record<string, string> = {};
+    if (isDaily) {
+      headers["Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=300";
+      headers["CDN-Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=300";
+      headers["Vercel-CDN-Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=300";
+    }
+
+    return NextResponse.json(response, { headers });
   } catch (error: any) {
     const msg = String(error?.message ?? error);
     const status = msg.includes("503") ? 503 : 500;
