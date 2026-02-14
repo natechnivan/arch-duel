@@ -1,5 +1,7 @@
 # Arch Duel ⚔️
 
+[![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
+
 A daily system design classification game powered by Google's Gemini AI. Prepare for system design interviews by classifying AI-generated design answers and identifying critical missing components.
 
 **🔗 Live Demo:** https://arch-duel.vercel.app/
@@ -120,21 +122,33 @@ arch-duel/
 ### Local Setup
 
 ```bash
-# 1. Clone the repository
+
+
+[![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
 git clone https://github.com/yourusername/arch-duel.git
 cd arch-duel
 
-# 2. Install dependencies
+
+
+[![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
 npm install
 
-# 3. Create .env.local file
+
+
+[![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
 echo "GEMINI_API_KEY=your_api_key_here" > .env.local
 
-# 4. Run dev server
+
+
+[![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
 npm run dev
 
-# 5. Open browser
-# Navigate to http://localhost:3000
+
+
+[![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
+
+
+[![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
 ```
 
 ### Available Commands
@@ -164,9 +178,10 @@ The AI generates challenges for these system design topics:
 
 ## 📊 Scoring System
 
-- ✅ **Correct classification + correct bucket**: +3 points
-- ⚠️ **Correct classification, wrong bucket**: +1 point
-- ❌ **Wrong classification**: -1 point
+- ✅ Correct kind + correct bucket: **+10**
+- ⚠️ Correct kind but wrong bucket: **+7**
+- 🤏 Close guess (incomplete vs flawed swapped): **+5**
+- ❌ Wrong: **+0**
 
 ---
 
