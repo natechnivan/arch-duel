@@ -19,16 +19,6 @@ body {
   color: var(--foreground);
 }
 
-/* Prevent text caret selection on tap */
-body {
-  -webkit-user-select: none;
-  user-select: none;
-}
-input, textarea, [contenteditable="true"] {
-  -webkit-user-select: text;
-  user-select: text;
-}
-
 /* --- Shimmer Skeleton Loader --- */
 .shimmer {
   background: linear-gradient(

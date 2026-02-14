@@ -55,7 +55,7 @@ const LS_SCORE_KEY = "archduel:score:v1";
 const REQUIRE_SUBMIT_BEFORE_NEXT = true;
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 600;
-const MIN_SHIMMER_MS = 100; // Reduced for faster perceived loading
+const MIN_SHIMMER_MS = 100;
 
 function todayKey() {
   const d = new Date();
@@ -159,7 +159,7 @@ export default function Home() {
 
   // ------------ Theme persistence ------------
   useEffect(() => {
-    const saved = (localStorage.getItem(LS_THEME_KEY) as any) || "system";
+    const saved = localStorage.getItem(LS_THEME_KEY) || "system";
     const t: "light" | "dark" | "system" =
       saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
     setTheme(t);
@@ -187,6 +187,7 @@ export default function Home() {
     if (!round) return true;
     return reveal === true;
   }, [round, reveal]);
+  const nextRoundLocked = Boolean(round && !canGoNext);
 
   async function start() {
     if (!canGoNext) return;
@@ -321,7 +322,7 @@ export default function Home() {
           </div>
 
           {/* Right controls */}
-          <div className="shrink-0 flex flex-wrap items-center justify-between sm:justify-end gap-3">
+          <div className="shrink-0 flex flex-wrap items-center justify-between sm:justify-end gap-2">
             {/* Theme segmented */}
             <div className={`select-none inline-flex rounded-xl border ${card} overflow-hidden`}>
               {(["system", "light", "dark"] as const).map((t) => (
@@ -329,7 +330,7 @@ export default function Home() {
                   key={t}
                   onClick={() => setTheme(t)}
                   className={[
-                    "px-3 py-2 text-sm transition",
+                    "select-none cursor-pointer px-3 py-2 text-sm transition-all duration-200 active:scale-[0.99]",
                     theme === t
                       ? "bg-blue-600 text-white"
                       : "bg-transparent hover:bg-gray-50 dark:hover:bg-gray-800",
@@ -348,7 +349,7 @@ export default function Home() {
 
             <button
               onClick={resetScore}
-              className="select-none text-sm px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 transition dark:bg-gray-950 dark:border-gray-800 dark:text-gray-100 dark:hover:bg-gray-900"
+              className="select-none cursor-pointer text-sm px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 transition-all duration-200 active:scale-[0.99] dark:bg-gray-950 dark:border-gray-800 dark:text-gray-100 dark:hover:bg-gray-900"
               title="Reset score"
             >
               Reset
@@ -357,49 +358,73 @@ export default function Home() {
         </div>
 
         {/* Actions */}
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-center">
+        <div className="mt-6 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
           <button
             onClick={start}
             disabled={isGenerating || !canGoNext}
-            className="select-none col-span-1 px-5 py-3 rounded-lg bg-blue-600 text-white cursor-pointer hover:bg-blue-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="select-none w-full sm:w-auto h-12 px-5 py-3 rounded-lg bg-blue-600 text-white cursor-pointer hover:bg-blue-700 transition-all duration-200 active:scale-[0.99] shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             title={!canGoNext ? "Submit this round first" : undefined}
           >
             {isGenerating ? <Spinner /> : null}
-            {round ? "Next Round" : "Start"}
+            {round ? (nextRoundLocked ? "Next Round Locked" : "Next Round") : "Start"}
           </button>
 
           <button
             onClick={startDaily}
             disabled={isGenerating || !canGoNext}
-            className="select-none col-span-1 px-5 py-3 rounded-lg border border-gray-300 bg-white cursor-pointer hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center dark:bg-gray-950 dark:hover:bg-gray-900 dark:border-gray-800 dark:text-gray-100"
+            className="select-none w-full sm:w-auto h-12 px-5 py-3 rounded-lg border border-gray-300 bg-white cursor-pointer hover:bg-gray-50 transition-all duration-200 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center dark:bg-gray-950 dark:hover:bg-gray-900 dark:border-gray-800 dark:text-gray-100"
             title={!canGoNext ? "Submit this round first" : undefined}
           >
-            Daily Challenge
+            {nextRoundLocked ? "Daily Challenge Locked" : "Daily Challenge"}
           </button>
         </div>
 
-        {REQUIRE_SUBMIT_BEFORE_NEXT && round && !reveal && (
+        {REQUIRE_SUBMIT_BEFORE_NEXT && nextRoundLocked && (
           <p className={`select-none mt-3 text-sm ${textMuted}`}>
             Tip: Submit your answer to unlock <b>Next Round</b>.
           </p>
         )}
 
         {errorMsg && (
-          <div className="mt-4 p-3 rounded border border-red-300 bg-red-50 text-sm dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+          <div className="select-none mt-4 p-3 rounded border border-red-300 bg-red-50 text-sm dark:border-red-900 dark:bg-red-950 dark:text-red-200">
             {errorMsg}
           </div>
         )}
 
         {retryInfo && (
-          <div className="mt-3 p-3 rounded border border-blue-200 bg-blue-50 text-sm dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
+          <div className="select-none mt-3 p-3 rounded border border-blue-200 bg-blue-50 text-sm dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
             {retryInfo}
           </div>
         )}
 
         {!round && !isGenerating && (
-          <p className={`select-none mt-10 ${textSub}`}>
-            Tap <b>Start</b> to play.
-          </p>
+          <section className={`mt-8 rounded-xl p-4 sm:p-6 ${card}`}>
+            <h2 className={`select-none text-lg sm:text-xl font-semibold ${textMain}`}>
+              Welcome to Arch Duel
+            </h2>
+            <p className={`select-none mt-2 text-sm sm:text-base ${textSub}`}>
+              Train your system design instincts by classifying AI-generated answers and spotting what is missing.
+            </p>
+
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+                <p className={`select-none text-xs uppercase tracking-wide ${textMuted}`}>Step 1</p>
+                <p className={`select-none mt-1 text-sm ${textMain}`}>Start a new challenge.</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+                <p className={`select-none text-xs uppercase tracking-wide ${textMuted}`}>Step 2</p>
+                <p className={`select-none mt-1 text-sm ${textMain}`}>Pick a quality verdict and impacted bucket.</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+                <p className={`select-none text-xs uppercase tracking-wide ${textMuted}`}>Step 3</p>
+                <p className={`select-none mt-1 text-sm ${textMain}`}>Submit to get feedback and score points.</p>
+              </div>
+            </div>
+
+            <p className={`select-none mt-4 text-sm ${textMuted}`}>
+              Tap <b>Start</b> for a fresh round or <b>Daily Challenge</b> for today&apos;s prompt.
+            </p>
+          </section>
         )}
 
         {/* LOADING STATE */}
@@ -407,7 +432,7 @@ export default function Home() {
           <section className="mt-8">
             <div className={`select-none text-sm ${textSub} h-4 w-20 rounded shimmer`} />
             <div className={`mt-2 text-lg font-semibold ${textMain} h-6 w-40 rounded shimmer`} />
-            <div className={`mt-5 p-4 sm:p-6 rounded-xl ${card}`}>
+            <div className={`mt-5 min-h-[200px] p-4 sm:p-6 rounded-xl ${card}`}>
               <div className="space-y-3">
                 <Skeleton className="h-4 w-[90%]" />
                 <Skeleton className="h-4 w-[96%]" />
@@ -429,13 +454,13 @@ export default function Home() {
             </div>
 
             {/* Prompt */}
-            <h2 className={`mt-2 text-lg sm:text-xl font-semibold ${textMain}`}>
+            <h2 className={`select-none mt-2 text-lg sm:text-xl font-semibold ${textMain}`}>
               {round.prompt}
             </h2>
 
             {/* Design Text Card */}
-            <div className={`mt-5 p-4 sm:p-6 rounded-xl ${card}`}>
-              <div className={`whitespace-pre-wrap leading-relaxed ${textSub}`}>
+            <div className={`mt-5 min-h-[200px] p-4 sm:p-6 rounded-xl ${card}`}>
+              <div className={`select-none whitespace-pre-wrap leading-relaxed ${textSub}`}>
                 {round.design_text}
               </div>
             </div>
@@ -447,7 +472,7 @@ export default function Home() {
               1) Classify
             </h3>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {(Object.keys(KIND_LABELS) as Kind[]).map((k) => {
                 const active = choice === k;
                 return (
@@ -455,10 +480,10 @@ export default function Home() {
                     key={k}
                     onClick={() => setChoice(k)}
                     className={[
-                      "select-none p-4 rounded-xl border transition cursor-pointer text-left",
+                      "select-none p-4 rounded-xl border transition-all duration-200 active:scale-[0.99] cursor-pointer text-left",
                       active
-                        ? "border-blue-600 bg-blue-50 dark:bg-blue-950/40"
-                        : "border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 active:scale-[0.99] dark:bg-gray-950 dark:border-gray-800 dark:hover:bg-gray-900",
+                        ? "border-blue-200 bg-blue-50 ring-2 ring-blue-500 ring-offset-2 dark:bg-blue-950/40 dark:border-blue-900 dark:ring-offset-gray-950"
+                        : "border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 dark:bg-gray-950 dark:border-gray-800 dark:hover:bg-gray-900",
                       textMain,
                     ].join(" ")}
                   >
@@ -485,10 +510,10 @@ export default function Home() {
                     key={b}
                     onClick={() => setBucket(b)}
                     className={[
-                      "select-none px-3 py-2 rounded-full border text-sm cursor-pointer transition",
+                      "select-none px-3 py-2 rounded-full border text-sm cursor-pointer transition-all duration-200 active:scale-[0.99]",
                       active
-                        ? "border-blue-600 bg-blue-50 dark:bg-blue-950/40"
-                        : "border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 active:scale-[0.99] dark:bg-gray-950 dark:border-gray-800 dark:hover:bg-gray-900",
+                        ? "border-blue-200 bg-blue-50 ring-2 ring-blue-500 ring-offset-2 dark:bg-blue-950/40 dark:border-blue-900 dark:ring-offset-gray-950"
+                        : "border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 dark:bg-gray-950 dark:border-gray-800 dark:hover:bg-gray-900",
                       textMain,
                     ].join(" ")}
                   >
@@ -511,7 +536,7 @@ export default function Home() {
                 <button
                   onClick={submit}
                   disabled={isEvaluating}
-                  className="select-none w-full sm:w-auto px-6 py-3 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 justify-center"
+                  className="select-none cursor-pointer w-full sm:w-auto h-12 px-6 py-3 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition-all duration-200 active:scale-[0.99] shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 justify-center"
                 >
                   {isEvaluating ? <Spinner /> : null}
                   Submit Answer
@@ -541,18 +566,18 @@ export default function Home() {
                   </span>
                 </div>
 
-                <p className={`mt-3 text-sm ${textSub}`}>
+                <p className={`select-none mt-3 text-sm ${textSub}`}>
                   <b>Verdict:</b> {evalResp.short_verdict}
                 </p>
 
-                <p className={`mt-2 text-sm ${textSub}`}>
+                <p className={`select-none mt-2 text-sm ${textSub}`}>
                   <b>Why:</b> {evalResp.why}
                 </p>
 
                 {evalResp.what_to_fix?.length ? (
                   <>
                     <h4 className={`select-none mt-4 font-semibold ${textMain}`}>What to fix</h4>
-                    <ul className={`list-disc pl-5 text-sm mt-2 ${textSub}`}>
+                    <ul className={`select-none list-disc pl-5 text-sm mt-2 ${textSub}`}>
                       {evalResp.what_to_fix.map((x, i) => (
                         <li key={i}>{x}</li>
                       ))}
@@ -560,7 +585,7 @@ export default function Home() {
                   </>
                 ) : null}
 
-                <p className={`mt-4 text-sm ${textSub}`}>
+                <p className={`select-none mt-4 text-sm ${textSub}`}>
                   <b>Takeaway:</b> {evalResp.learning_takeaway}
                 </p>
 
