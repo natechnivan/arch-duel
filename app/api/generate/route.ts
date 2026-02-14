@@ -136,9 +136,9 @@ Return JSON only.
     // Add caching headers for daily challenges only
     const headers: Record<string, string> = {};
     if (isDaily) {
-      headers["Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=300";
-      headers["CDN-Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=300";
-      headers["Vercel-CDN-Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=300";
+      headers["Cache-Control"] = "public, s-maxage=86400, stale-while-revalidate=300";
+      headers["CDN-Cache-Control"] = "public, s-maxage=86400, stale-while-revalidate=300";
+      headers["Vercel-CDN-Cache-Control"] = "public, s-maxage=86400, stale-while-revalidate=300";
     }
 
     return NextResponse.json(response, { headers });

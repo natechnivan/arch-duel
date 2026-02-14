@@ -37,7 +37,7 @@ A daily system design classification game powered by Google's Gemini AI. Prepare
 - 🤖 **AI-Generated Challenges** using Google's Gemini API
 - 🎯 **Classification Game** with 4 quality levels
 - 🪣 **10 System Design Buckets** covering critical areas
-- 📅 **Daily Challenge** cached for 60 seconds (stale-while-revalidate for 5min)
+- **Daily Challenge** with browser + CDN caching (1 day TTL, stale-while-revalidate for 5min)
 - 💾 **Score Persistence** across sessions using localStorage
 - 🌙 **Dark Mode Support** with system preference detection
 - 📱 **Fully Responsive** Mobile-first design
@@ -54,36 +54,17 @@ A daily system design classification game powered by Google's Gemini AI. Prepare
 
 ## 🏗️ Architecture
 
-### Project Structure
-```
-arch-duel/
-├── app/
-│   ├── layout.tsx           # Root layout with theme system
-│   ├── page.tsx             # Main game component
-│   ├── globals.css          # Global styles + shimmer animation
-│   ├── api/
-│   │   ├── generate/        # POST /api/generate - Creates new rounds
-│   │   ├── evaluate/        # POST /api/evaluate - Evaluates answers
-│   │   └── _lib/
-│   │       └── geminiModels.ts  # Shared AI utilities
-│   └── components/
-│       ├── Spinner.tsx      # Loading indicator
-│       ├── SpinnerDark.tsx  # Dark mode spinner
-│       └── Skeleton.tsx     # Shimmer loader UI
-├── public/                  # Static assets
-├── Configuration Files
-│   ├── tsconfig.json        # TypeScript config
-│   ├── next.config.js       # Next.js config
-│   ├── tailwind.config.js   # Tailwind CSS
-│   ├── postcss.config.js    # PostCSS pipeline
-│   ├── .eslintrc.json       # ESLint rules
-│   └── .prettierrc           # Prettier formatting
-└── package.json             # Dependencies
-```
+### Key Paths
+- `app/page.tsx` - Main game UI and client-side game flow
+- `app/api/generate/route.ts` - Generates rounds (supports Daily Challenge mode)
+- `app/api/evaluate/route.ts` - Evaluates player answers and scoring deltas
+- `app/api/_lib/geminiModels.ts` - Shared Gemini model and retry utilities
+- `app/globals.css` - Global styling and shimmer loader styles
+- `README.md` - Setup, architecture notes, and gameplay docs
 
 ### State Management
 - React Hooks (useState, useEffect, useMemo)
-- localStorage for persistence (score, theme, daily cache)
+- localStorage for persistence (score, theme, daily cache with TTL)
 - Client-side state for game flow
 
 ### API Endpoints
@@ -91,7 +72,7 @@ arch-duel/
 **POST `/api/generate?daily=true`**
 - Generates a new system design challenge
 - Returns: `{ roundId, prompt, topic, difficulty, design_text, __answerKey }`
-- Daily parameter adds caching headers (60s cache + 5min stale-while-revalidate)
+- Daily mode adds CDN caching headers (s-maxage=86400, stale-while-revalidate=300)
 
 **POST `/api/evaluate`**
 - Evaluates player's answer against AI's expectation
@@ -196,7 +177,7 @@ The AI generates challenges for these system design topics:
 ### Backend
 - **Gemini Retry Logic**: Automatic 3-attempt retry with exponential backoff (600ms, 1200ms)
 - **Request Timeout**: Handles 503/429 overload responses gracefully
-- **Daily Cache**: 60s CDN cache + 5min stale-while-revalidate for Daily Challenge
+- **Daily Cache**: browser cache + CDN cache use 1 day TTL with stale-while-revalidate (5 min)
 - **Response Validation**: Zod ensures data integrity before returning
 
 ### Code Quality
@@ -282,3 +263,7 @@ A: The key is in environment variables (.env.local), not exposed. The frontend c
 ---
 
 **Made with ❤️ for system design enthusiasts**
+
+
+
+
