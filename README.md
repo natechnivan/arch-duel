@@ -1,270 +1,243 @@
-# Arch Duel ⚔️
+# Arch Duel
 
 [![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
 
-A daily system design classification game powered by Google's Gemini AI. Prepare for system design interviews by classifying AI-generated design answers and identifying critical missing components.
+Arch Duel is a system design interview game built with Next.js, Gemini, Postgres, and Drizzle. Each round shows an AI-generated design answer for a real system design prompt, and the player has to classify whether the answer is solid, incomplete, flawed, or pure buzzword filler.
 
-**🔗 Live Demo:** https://arch-duel.vercel.app/
+Live app: https://arch-duel.vercel.app/
 
----
+Technical reference: [PROJECT_REFERENCE.md](/e:/Apps/arch-duel/PROJECT_REFERENCE.md)
 
-## 🎮 How to Play
+## Current Product State
 
-1. **Click "Start"** → AI generates a system design answer
-2. **Classify** → Choose the answer quality:
-   - ✅ **Legit** - Complete and correct design
-   - ⚠️ **Incomplete** - Missing critical components
-   - ❌ **Flawed** - Incorrect or problematic approach
-   - 💀 **Buzzword BS** - Vague and unhelpful
+The project currently ships with:
 
-3. **Pick a Bucket** → Select the most impacted system design area:
-   - API Design, Data Model, Scaling, Caching, Queue/Stream
-   - Consistency, Partitioning, Observability, Security, Other
+- Practice rounds and daily challenge mode
+- Difficulty and topic filters
+- Guest play with browser-persisted score and session continuity
+- Account registration and login with secure cookie sessions
+- Persistent attempts, streaks, weak-area tracking, and leaderboard data
+- A paginated `/history` page for logged-in users
+- An `/admin` console for scenario pack management
+- AI-assisted scenario generation and live prompt validation tools for admins
 
-4. **Submit** → Get AI-evaluated feedback with:
-   - Correctness verdict
-   - Why your answer was right/wrong
-   - What to fix going forward
-   - Learning takeaway
+This is no longer just a static prompt list. The playable scenario catalog, generated rounds, attempts, and account data are all persisted in Postgres.
 
-5. **Track Score** → Earn points for correct classifications
+## How Gameplay Works
 
----
+1. Start a round or open the daily challenge.
+2. Read the generated design answer for the selected topic and difficulty.
+3. Classify it as one of:
+   - `legit`
+   - `incomplete`
+   - `flawed`
+   - `buzzword_bs`
+4. Pick the missing or most impacted bucket:
+   - `none`
+   - `api`
+   - `data_model`
+   - `scaling`
+   - `caching`
+   - `queue_stream`
+   - `consistency`
+   - `partitioning`
+   - `observability`
+   - `security`
+   - `other_tradeoffs`
+5. Submit to get the score, verdict, explanation, hidden issue, fix suggestions, and learning takeaway.
+6. Retry the same round in practice mode if you want feedback without affecting score.
 
-## ✨ Features
+Scoring:
 
-### Core Features
-- 🤖 **AI-Generated Challenges** using Google's Gemini API
-- 🎯 **Classification Game** with 4 quality levels
-- 🪣 **10 System Design Buckets** covering critical areas
-- **Daily Challenge** with browser + CDN caching (1 day TTL, stale-while-revalidate for 5min)
-- 💾 **Score Persistence** across sessions using localStorage
-- 🌙 **Dark Mode Support** with system preference detection
-- 📱 **Fully Responsive** Mobile-first design
+- Correct kind and bucket: `+10`
+- Correct kind, wrong bucket: `+7`
+- Close miss between `incomplete` and `flawed`: `+5`
+- Otherwise: `+0`
 
-### Technical Features
-- ⚡ **Optimized Loading** with shimmer skeleton effects (100ms min)
-- 🔄 **Resilient Retry Logic** for API failures (3 attempts with exponential backoff)
-- ✅ **Type Safety** with TypeScript & Zod validation
-- 🚀 **Fast Builds** using Next.js Turbopack
-- 💰 **CDN-Optimized** with smart caching headers for daily challenge
-- 📊 **Require Submit** before next round to prevent skipping
+If the ground truth is `legit`, the bucket is treated as `none`.
 
----
+## Main User Features
 
-## 🏗️ Architecture
+- Daily challenge flow with CDN cache headers and one scored daily attempt per user/session per UTC day
+- Standard rounds with recent-scenario exclusion to reduce repeats
+- Active round restore from local storage if the tab reloads
+- Practice retry mode after scoring
+- Logged-in dashboard with:
+  - total attempts
+  - accuracy
+  - score
+  - streak
+  - recent weak areas
+  - difficulty breakdown
+  - recent attempt history
+- Top-10 leaderboard
+- Full paginated history page for authenticated users
+- Theme switching with `system`, `light`, and `dark`
 
-### Key Paths
-- `app/page.tsx` - Main game UI and client-side game flow
-- `app/api/generate/route.ts` - Generates rounds (supports Daily Challenge mode)
-- `app/api/evaluate/route.ts` - Evaluates player answers and scoring deltas
-- `app/api/_lib/geminiModels.ts` - Shared Gemini model and retry utilities
-- `app/globals.css` - Global styling and shimmer loader styles
-- `README.md` - Setup, architecture notes, and gameplay docs
+## Admin Features
 
-### State Management
-- React Hooks (useState, useEffect, useMemo)
-- localStorage for persistence (score, theme, daily cache with TTL)
-- Client-side state for game flow
+The admin console at `/admin` is enabled only for accounts whose email appears in `ADMIN_EMAILS`.
 
-### API Endpoints
+Admins can:
 
-**POST `/api/generate?daily=true`**
-- Generates a new system design challenge
-- Returns: `{ roundId, prompt, topic, difficulty, design_text, __answerKey }`
-- Daily mode adds CDN caching headers (s-maxage=86400, stale-while-revalidate=300)
+- Seed the built-in core scenario pack into the database
+- Create and edit scenario packs
+- Create and edit individual scenarios
+- Generate batches of AI-authored scenarios into a selected pack
+- Run live prompt validation against sample scenarios to catch contract or quality issues
 
-**POST `/api/evaluate`**
-- Evaluates player's answer against AI's expectation
-- Input: design_text, player choices, expected answer
-- Returns: `{ correct, score_delta, verdict, why, what_to_fix, learning_takeaway }`
+The app uses a database-backed scenario catalog at runtime. If database scenarios exist, gameplay pulls from those. The built-in scenario list acts as seed data and fallback topic metadata, not the primary operating model.
 
----
+## Architecture
 
-## 🛠️ Tech Stack
+### Frontend
+
+- `app/page.tsx`: main game UI, auth modal flow, dashboard, leaderboard, topic filter, daily cache handling, and round state persistence
+- `app/history/page.tsx`: paginated attempt history for logged-in users
+- `app/admin/page.tsx`: admin console for packs, scenarios, generation, and validation
+
+### API
+
+- `POST /api/generate`: generates and stores a round
+- `POST /api/evaluate`: scores a submission using the persisted round answer key
+- `POST /api/round-result`: restores the last scored result for a round
+- `GET /api/bootstrap`: returns session user and active topics
+- `GET /api/dashboard`: returns leaderboard, user stats, history summary, and admin data
+- `GET /api/history`: returns paginated attempt history for the current user
+- `POST /api/auth/register`: creates an account
+- `POST /api/auth/login`: creates a cookie-backed session
+- `POST /api/auth/logout`: clears the active session
+- `GET /api/auth/me`: returns the current session user
+- `GET /api/admin/overview`: checks admin access
+- `POST /api/admin/seed-defaults`: seeds the default scenario pack
+- `GET/POST /api/admin/scenario-packs`: list or create packs
+- `GET/PATCH /api/admin/scenario-packs/[packId]`: inspect or update a pack
+- `POST /api/admin/scenarios`: create a scenario
+- `PATCH /api/admin/scenarios/[scenarioId]`: update a scenario
+- `POST /api/admin/generate-scenarios`: create AI-generated scenario rows
+- `POST /api/admin/validate-prompts`: validate prompt output against sample scenarios
+
+### Persistence Model
+
+Database tables in [db/schema.ts](/e:/Apps/arch-duel/db/schema.ts):
+
+- `users`
+- `sessions`
+- `scenario_packs`
+- `scenarios`
+- `rounds`
+- `attempts`
+
+Important implementation detail: the browser never receives the round answer key from `/api/generate`. The server stores it in `rounds`, and `/api/evaluate` resolves the expected answer from the database before scoring.
+
+## Tech Stack
 
 | Layer | Technology |
-|-------|------------|
-| **Frontend** | Next.js 16 (App Router), React 18, TypeScript |
-| **Styling** | Tailwind CSS (default theme) |
-| **AI** | Google Gemini API via `@google/generative-ai` |
-| **Validation** | Zod (runtime schema validation) |
-| **Build** | Turbopack (Next.js 16 bundler) |
-| **Deployment** | Vercel |
+| --- | --- |
+| App | Next.js 16, React 18, TypeScript |
+| Styling | Tailwind CSS |
+| AI | Google Gemini via `@google/generative-ai` |
+| Validation | Zod |
+| Database | Postgres |
+| ORM | Drizzle ORM + Drizzle Kit |
 
----
-
-## 🚀 Getting Started
+## Local Setup
 
 ### Prerequisites
-- Node.js 18+
-- Google Gemini API key ([Get one here](https://aistudio.google.com/app/apikey))
 
-### Local Setup
+- Node.js 18+
+- A Postgres database
+- A Gemini API key from https://aistudio.google.com/app/apikey
+
+### Environment Variables
+
+Copy `.env.example` to `.env.local` and fill in:
 
 ```bash
-
-
-[![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
-git clone https://github.com/yourusername/arch-duel.git
-cd arch-duel
-
-
-
-[![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
-npm install
-
-
-
-[![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
-echo "GEMINI_API_KEY=your_api_key_here" > .env.local
-
-
-
-[![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
-npm run dev
-
-
-
-[![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
-
-
-[![CI](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml/badge.svg)](https://github.com/natechnivan/arch-duel/actions/workflows/ci.yml)
+GEMINI_API_KEY=your_gemini_api_key_here
+DATABASE_URL=postgres://user:password@host:5432/database
+ADMIN_EMAILS=admin@example.com
 ```
+
+Notes:
+
+- `DATABASE_URL` or `POSTGRES_URL` is required for real gameplay, scoring, accounts, admin tools, and persistence.
+- `ADMIN_EMAILS` is a comma-separated allowlist for `/admin`.
+
+### Install And Run
+
+```bash
+git clone https://github.com/natechnivan/arch-duel.git
+cd arch-duel
+npm install
+cp .env.example .env.local
+npm run db:push
+npm run dev
+```
+
+Open `http://localhost:3000`.
 
 ### Available Commands
 
 ```bash
-npm run dev          # Start development server (hot reload)
-npm run build        # Create optimized production build
-npm start            # Start production server
-npm run lint         # Run ESLint
-npm run typecheck    # Run TypeScript type checker
+npm run dev
+npm run build
+npm start
+npm run lint
+npm run typecheck
+npm run db:push
+npm run db:studio
 ```
 
----
+## Database Notes
 
-## 🎯 Game Topics
+- Drizzle config lives in [drizzle.config.ts](/e:/Apps/arch-duel/drizzle.config.ts)
+- DB client setup is in [db/index.ts](/e:/Apps/arch-duel/db/index.ts)
+- Query helpers are in [db/queries.ts](/e:/Apps/arch-duel/db/queries.ts)
+- Default built-in scenarios live in [app/api/_lib/scenarios.ts](/e:/Apps/arch-duel/app/api/_lib/scenarios.ts)
 
-The AI generates challenges for these system design topics:
+On a fresh database, sign up with an admin email and then use `/admin` to run `Seed Default Scenarios`. That creates the initial playable scenario pack in Postgres.
+
+## Current Built-In Topic Coverage
+
+The built-in scenario set currently covers:
+
 - URL Shortener
 - Rate Limiter
 - Notification System
-- Feed/Social Timeline
-- Chat/Messaging
-- File Upload Service
+- Feed
+- Chat
+- File Upload
 - Analytics Pipeline
+- Search
+- Payments
+- Recommendation System
+- Video Streaming
+- Collaborative Editing
+- Job Scheduler
+- Feature Flag Service
+- Webhook Delivery
+- Metrics Platform
+- API Gateway
 
----
+Difficulty coverage spans `junior`, `mid`, `senior`, and `staff`, depending on the scenario.
 
-## 📊 Scoring System
+## Operational Behavior
 
-- ✅ Correct kind + correct bucket: **+10**
-- ⚠️ Correct kind but wrong bucket: **+7**
-- 🤏 Close guess (incomplete vs flawed swapped): **+5**
-- ❌ Wrong: **+0**
+- Gemini calls are retried on overload-style failures
+- Client fetches retry transient `429`, `502`, `503`, and `504` responses
+- Daily rounds are cacheable at the CDN layer
+- The app keeps a minimum shimmer/loading display to avoid UI flicker
+- Guest score is stored in `localStorage`
+- Logged-in score and history come from persisted attempts in Postgres
+- The active round is cached locally so refreshes can restore in-progress play
 
----
+## Known Constraints
 
-## 🔧 Performance Optimizations
+- Gemini availability still affects round generation and explanation quality
+- Leaderboard and stats use application-side aggregation logic and are not optimized for very large datasets yet
+- Anonymous players get local score persistence, but the richer stats and history flows are account-based
 
-### Frontend
-- **Shimmer Loading**: 100ms minimum (provides visual feedback without artificial delay)
-- **Dark Mode**: Uses system preference, saves to localStorage
-- **Score Caching**: Persisted in localStorage for instant load
-- **Responsive Grid**: 2-col on mobile, flexible on desktop
+## License
 
-### Backend
-- **Gemini Retry Logic**: Automatic 3-attempt retry with exponential backoff (600ms, 1200ms)
-- **Request Timeout**: Handles 503/429 overload responses gracefully
-- **Daily Cache**: browser cache + CDN cache use 1 day TTL with stale-while-revalidate (5 min)
-- **Response Validation**: Zod ensures data integrity before returning
-
-### Code Quality
-- **Refactored Utilities**: Extracted `fetchWithRetry()`, `resetRound()`, `ensureMinLoadTime()`
-- **Constants**: Centralized configuration (MAX_RETRY_ATTEMPTS, RETRY_DELAY_MS, etc.)
-- **No Duplication**: Single source of truth for retry patterns, state resets
-
----
-
-## 🌙 Dark Mode
-
-- Automatic detection of system preference
-- Toggle in header: System / Light / Dark
-- Smooth transitions with Tailwind dark mode
-- Persists user's choice to localStorage
-
----
-
-## 📝 Configuration
-
-Key constants in `app/page.tsx`:
-```typescript
-const MAX_RETRY_ATTEMPTS = 3;           // Retry count for API failures
-const RETRY_DELAY_MS = 600;             // Exponential backoff base (600ms, 1200ms...)
-const MIN_SHIMMER_MS = 100;             // Minimum loading animation duration
-const REQUIRE_SUBMIT_BEFORE_NEXT = true; // Force answer submission before next round
-```
-
----
-
-## 🐛 Known Limitations (v1)
-
-- Answer key visible in browser console (MVP - for demo purposes)
-- No authentication (stateless per-session scoring)
-- Limited to Gemini API availability
-- Single-user local storage (no cloud sync)
-
-**Future improvements:**
-- Server-side answer validation
-- User accounts & leaderboard
-- Answer history & stats
-- Difficulty selection
-- Custom topic filters
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License. See [`LICENSE`](./LICENSE).
-
----
-
-## 👨‍💻 Contributing
-
-Contributions welcome! Please:
-1. Fork the repo
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 🙋 Support
-
-- **Issues?** Open a GitHub issue with details
-- **Questions?** Check the FAQ below
-
-### FAQ
-
-**Q: Where does the AI content come from?**
-A: All questions and evaluations are generated by Google's Gemini API based on system design prompts.
-
-**Q: Is my score saved?**
-A: Yes! Scores are stored in your browser's localStorage. Clearing browser data will reset them.
-
-**Q: Can I use this for interview prep?**
-A: Absolutely! This is specifically designed for system design interview practice.
-
-**Q: Why is the Gemini API key exposed in localStorage?**
-A: The key is in environment variables (.env.local), not exposed. The frontend calls the `/api/generate` and `/api/evaluate` endpoints securely.
-
----
-
-**Made with ❤️ for system design enthusiasts**
-
-
-
-
-
+MIT. See [LICENSE](/e:/Apps/arch-duel/LICENSE).

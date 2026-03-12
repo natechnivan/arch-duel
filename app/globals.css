@@ -19,6 +19,22 @@ body {
   color: var(--foreground);
 }
 
+/* Interactive controls should not show a text caret; keep it only for real form fields. */
+html,
+body,
+button,
+a,
+[role="button"] {
+  caret-color: transparent;
+}
+
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  caret-color: auto;
+}
+
 /* --- Shimmer Skeleton Loader --- */
 .shimmer {
   background: linear-gradient(
