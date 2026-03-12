@@ -8,7 +8,7 @@ Instead of passively reading solutions, you **play the role of the reviewer** â€
 
 Live app: https://arch-duel.vercel.app/
 
-# What Makes Arch Duel Different
+## What Makes Arch Duel Different
 
 Most interview prep platforms show **perfect answers**.
 
