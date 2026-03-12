@@ -4,7 +4,26 @@
 
 Arch Duel is a system design interview game built with Next.js, Gemini, Postgres, and Drizzle. Each round shows an AI-generated design answer for a real system design prompt, and the player has to classify whether the answer is solid, incomplete, flawed, or pure buzzword filler.
 
+Instead of passively reading solutions, you **play the role of the reviewer** — identifying weaknesses, spotting missing components, and learning how real systems should be designed.
+
 Live app: https://arch-duel.vercel.app/
+
+# What Makes Arch Duel Different
+
+Most interview prep platforms show **perfect answers**.
+
+Arch Duel flips the model.
+
+You’re shown **AI-generated system design answers** that might be:
+
+• Excellent  
+• Incomplete  
+• Flawed  
+• Pure buzzword nonsense  
+
+Your task is to **identify what’s wrong and where the problem lies.**
+
+This simulates the **exact skill senior engineers use in architecture reviews and design interviews.**
 
 ## Current Features
 
