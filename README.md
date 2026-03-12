@@ -6,9 +6,7 @@ Arch Duel is a system design interview game built with Next.js, Gemini, Postgres
 
 Live app: https://arch-duel.vercel.app/
 
-Technical reference: [PROJECT_REFERENCE.md](/e:/Apps/arch-duel/PROJECT_REFERENCE.md)
-
-## Current Product State
+## Current Features
 
 The project currently ships with:
 
